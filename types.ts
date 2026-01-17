@@ -6,7 +6,6 @@ export interface StudentSubmission {
   studentNumber: string;
   grade: string;
   room: string;
-  activityType: 'Sports Day' | 'Children Day';
   videoFile?: File | null;
   fileUrl?: string;
   review?: RubricReview;
