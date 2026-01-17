@@ -33,6 +33,7 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
   const [saving, setSaving] = useState(false);
   const [isAutoGrading, setIsAutoGrading] = useState(false);
 
+  // 1. Filter Logic
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(s => {
       const matchesText = s.name.toLowerCase().includes(filterText.toLowerCase()) || 
@@ -50,7 +51,8 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
     });
   }, [submissions, filterText, filterGrade, filterRoom, filterActivity, filterStatus]);
 
-  const pendingSubmissions = useMemo(() => 
+  // Submissions that are shown and NOT YET graded
+  const pendingVisibleSubmissions = useMemo(() => 
     filteredSubmissions.filter(s => !s.review || s.review.status !== 'Graded'),
     [filteredSubmissions]
   );
@@ -62,7 +64,6 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
       contentAccuracy: 0, participation: 0, presentation: 0, discipline: 0,
       totalScore: 0, percentage: 0, comment: '', status: 'Pending'
     });
-    // Auto scroll to editor
     setTimeout(() => {
         document.getElementById(`editor-${sub.rowId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
@@ -80,15 +81,16 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
     });
   };
 
+  // 🤖 AI CORE FUNCTION
   const runAIScore = async (student: StudentSubmission) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `คุณเป็นคุณครูผู้เชี่ยวชาญด้านสุขศึกษาและพลศึกษา ประเมินวิดีโอส่งงานของมนักเรียนชื่อ "${student.name}" 
+      contents: `คุณเป็นคุณครูผู้เชี่ยวชาญด้านสุขศึกษาและพลศึกษา ประเมินวิดีโอส่งงานของนักเรียนชื่อ "${student.name}" 
       กิจกรรม: ${student.activityType === 'Sports Day' ? 'กีฬาสี (ทักษะเคลื่อนไหว)' : 'วันเด็ก (ทักษะสร้างสรรค์)'}
       ระดับชั้น: ${student.grade}
       
-      กรุณาให้คะแนน JSON (ค่า 0-5) สำหรับเกณฑ์ดังนี้: 
+      กรุณาให้คะแนนในรูปแบบ JSON (ค่า 0-5) สำหรับเกณฑ์ดังนี้: 
       1. contentAccuracy (ความถูกต้องของท่าทาง/เนื้อหา)
       2. participation (ความตั้งใจและพยายาม)
       3. presentation (ความน่าสนใจในการนำเสนอ)
@@ -124,18 +126,18 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
         ...aiResult, 
         totalScore: total, 
         percentage: Math.round((total / 20) * 100),
-        comment: `🤖 [AI ประเมินเบื้องต้น]: ${aiResult.comment}`
+        comment: `🤖 [AI วิเคราะห์เบื้องต้น]: ${aiResult.comment}`
       }));
     } catch (error) { setErrorMessage("AI ตรวจไม่สำเร็จจ้า"); } finally { setIsAutoGrading(false); }
   };
 
   const handleBulkAutoGrade = async () => {
-    if (pendingSubmissions.length === 0) return;
+    if (pendingVisibleSubmissions.length === 0) return;
     setIsBulkGrading(true);
-    setBulkProgress({ current: 0, total: pendingSubmissions.length, currentName: '' });
+    setBulkProgress({ current: 0, total: pendingVisibleSubmissions.length, currentName: '' });
 
-    for (let i = 0; i < pendingSubmissions.length; i++) {
-      const sub = pendingSubmissions[i];
+    for (let i = 0; i < pendingVisibleSubmissions.length; i++) {
+      const sub = pendingVisibleSubmissions[i];
       setBulkProgress(prev => ({ ...prev, current: i + 1, currentName: sub.name }));
       
       try {
@@ -172,22 +174,20 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
     setSaving(false);
   };
 
+  // 📊 EXPORT TO CSV (Thai Support)
   const exportToCSV = () => {
-    // 1. Sort data by Grade -> Room -> StudentNumber (Numeric)
     const sorted = [...submissions].sort((a, b) => {
       if (a.grade !== b.grade) return a.grade.localeCompare(b.grade);
       if (a.room !== b.room) return a.room.localeCompare(b.room);
       return parseInt(a.studentNumber) - parseInt(b.studentNumber);
     });
 
-    // 2. Prepare headers
     const headers = [
       "เลขที่", "ชื่อ-นามสกุล", "ชั้น", "ห้อง", "กิจกรรม", 
-      "คะแนนเนื้อหา (5)", "คะแนนการมีส่วนร่วม (5)", "คะแนนการนำเสนอ (5)", "คะแนนวินัย (5)",
-      "รวม (20)", "ร้อยละ", "ความเห็นคุณครู"
+      "เนื้อหา(5)", "การมีส่วนร่วม(5)", "นำเสนอ(5)", "วินัย(5)",
+      "รวม(20)", "ร้อยละ", "ข้อความจากครู"
     ];
 
-    // 3. Prepare rows
     const rows = sorted.map(s => [
       s.studentNumber,
       s.name,
@@ -203,16 +203,12 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
       `"${(s.review?.comment || '').replace(/"/g, '""')}"`
     ]);
 
-    // 4. Combine with BOM for Excel Thai support
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    
-    // 5. Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `คะแนนวิชาสุขศึกษา_สรุปรายห้อง_${new Date().toLocaleDateString('th-TH')}.csv`);
-    link.style.visibility = 'hidden';
+    link.setAttribute("download", `คะแนนสรุป_${new Date().toLocaleDateString('th-TH')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -234,34 +230,33 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
 
   return (
     <div className="space-y-8">
-      {/* Bulk Grading Progress Overlay */}
+      {/* 🤖 Progress Modal for AI Bulk */}
       {isBulkGrading && (
-        <div className="fixed inset-0 z-[200] bg-indigo-900/60 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-white rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl animate-in zoom-in duration-300">
+        <div className="fixed inset-0 z-[200] bg-indigo-900/60 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="bg-white rounded-[3rem] p-10 max-w-lg w-full text-center shadow-2xl animate-in zoom-in duration-300 border-8 border-indigo-50">
             <div className="text-7xl mb-6 animate-bounce">🤖</div>
-            <h3 className="text-3xl font-kids text-indigo-600 mb-2">กำลังให้ AI ช่วยตรวจจ้า...</h3>
-            <p className="text-slate-500 font-bold mb-8">กำลังตรวจของ: <span className="text-indigo-500">{bulkProgress.currentName}</span></p>
-            
+            <h3 className="text-3xl font-kids text-indigo-600 mb-2">AI กำลังช่วยตรวจงาน...</h3>
+            <p className="text-slate-500 font-bold mb-8">ของนักเรียน: <span className="text-indigo-500">{bulkProgress.currentName}</span></p>
             <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden mb-4 border-2 border-indigo-50">
               <div 
                 className="bg-gradient-to-r from-indigo-400 to-indigo-600 h-full transition-all duration-500"
                 style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
               ></div>
             </div>
-            <p className="text-sm font-black text-indigo-400">{bulkProgress.current} / {bulkProgress.total} คน</p>
+            <p className="text-sm font-black text-indigo-400">{bulkProgress.current} จาก {bulkProgress.total} งาน</p>
           </div>
         </div>
       )}
 
-      {/* Header & Stats Dashboard */}
+      {/* 🔝 Top Header Dashboard */}
       <div className="bg-white rounded-[3rem] p-8 shadow-xl border-4 border-indigo-50">
         <div className="flex flex-col lg:flex-row justify-between items-center gap-6 mb-8">
             <div className="flex items-center gap-6">
-            <div className="text-6xl bg-indigo-100 p-4 rounded-3xl shadow-inner">👩‍🏫</div>
-            <div>
-                <h2 className="text-3xl font-kids text-indigo-600">สวัสดีคุณครู {teacherName}</h2>
-                <p className="text-slate-400 font-bold italic">ผู้จัดการเรียนรู้ วิชาสุขศึกษาและพลศึกษา</p>
-            </div>
+              <div className="text-6xl bg-indigo-100 p-4 rounded-3xl shadow-inner">👩‍🏫</div>
+              <div>
+                  <h2 className="text-3xl font-kids text-indigo-600">ยินดีต้อนรับ {teacherName}</h2>
+                  <p className="text-slate-400 font-bold italic">ผู้จัดการเรียนรู้ วิชาสุขศึกษาและพลศึกษา</p>
+              </div>
             </div>
             <div className="flex flex-wrap justify-center gap-3">
                 <button 
@@ -271,23 +266,23 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
                     <span className="text-2xl group-hover:scale-110 transition-transform">📊</span>
                     ส่งออกคะแนน (CSV)
                 </button>
-                {pendingSubmissions.length > 0 && (
+                {pendingVisibleSubmissions.length > 0 && (
                     <button 
                         onClick={handleBulkAutoGrade}
                         className="bg-yellow-400 text-indigo-900 px-8 py-4 rounded-2xl font-bold shadow-lg hover:bg-yellow-300 transition-all flex items-center gap-2 group"
                     >
                         <span className="text-2xl group-hover:rotate-12 transition-transform">🤖</span>
-                        ตรวจงานที่เหลือด้วย AI ({pendingSubmissions.length})
+                        ตรวจงานรอกรองด้วย AI ({pendingVisibleSubmissions.length})
                     </button>
                 )}
             </div>
         </div>
 
-        {/* Filters and Status Tabs */}
+        {/* 🔍 Controls & Status Tabs */}
         <div className="bg-indigo-50/50 p-6 rounded-[2rem] border-2 border-indigo-100 space-y-6">
             <div className="flex flex-wrap justify-center gap-3 bg-white/60 p-2 rounded-3xl border border-indigo-50 max-w-fit mx-auto">
                 {[
-                    {id: 'All', label: 'งานทั้งหมด', icon: '📁'},
+                    {id: 'All', label: 'ทั้งหมด', icon: '📁'},
                     {id: 'Pending', label: 'รอตรวจ', icon: '⏳'},
                     {id: 'Graded', label: 'ตรวจแล้ว', icon: '✅'}
                 ].map(tab => (
@@ -303,7 +298,7 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div>
-                    <label className="block text-[10px] font-black text-indigo-300 mb-2 ml-2 uppercase tracking-widest">ค้นหากิจกรรม</label>
+                    <label className="block text-[10px] font-black text-indigo-300 mb-2 ml-2 uppercase tracking-widest">ชุดกิจกรรม</label>
                     <select value={filterActivity} onChange={(e) => setFilterActivity(e.target.value)} className="w-full p-3 rounded-2xl bg-white border-2 border-indigo-100 font-bold outline-none cursor-pointer">
                         <option value="Sports Day">งานกีฬาสี 🏃</option>
                         <option value="Children Day">งานวันเด็ก 🎈</option>
@@ -312,10 +307,10 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
                 </div>
                 <div>
                     <label className="block text-[10px] font-black text-indigo-300 mb-2 ml-2 uppercase tracking-widest">ชื่อ/เลขที่</label>
-                    <input type="text" placeholder="พิมพ์เพื่อค้นหา..." value={filterText} onChange={(e) => setFilterText(e.target.value)} className="w-full p-3 rounded-2xl bg-white border-2 border-indigo-100 outline-none font-bold"/>
+                    <input type="text" placeholder="พิมพ์ค้นหา..." value={filterText} onChange={(e) => setFilterText(e.target.value)} className="w-full p-3 rounded-2xl bg-white border-2 border-indigo-100 outline-none font-bold"/>
                 </div>
                 <div>
-                    <label className="block text-[10px] font-black text-indigo-300 mb-2 ml-2 uppercase tracking-widest">ระดับชั้น</label>
+                    <label className="block text-[10px] font-black text-indigo-300 mb-2 ml-2 uppercase tracking-widest">ชั้นปี</label>
                     <select value={filterGrade} onChange={(e) => setFilterGrade(e.target.value)} className="w-full p-3 rounded-2xl bg-white border-2 border-indigo-100 outline-none font-bold cursor-pointer">
                         <option value="All">ทุกชั้น</option>
                         <option value="Prathom 5">ป.5</option>
@@ -333,20 +328,20 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
         </div>
       </div>
 
+      {/* 📄 Submission List */}
       <div className="grid gap-6">
         {filteredSubmissions.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-[3rem] border-4 border-dashed border-indigo-50 shadow-inner">
              <p className="text-7xl mb-6">🏜️</p>
-             <p className="text-indigo-300 font-bold text-xl italic">ไม่พบรายการที่คุณครูค้นหาจ้า</p>
+             <p className="text-indigo-300 font-bold text-xl italic">ไม่พบรายการที่ตรงเงื่อนไขจ้า</p>
           </div>
         ) : filteredSubmissions.map((sub) => (
           <div key={sub.rowId} id={`editor-${sub.rowId}`} className={`p-8 rounded-[3.5rem] border-4 transition-all relative overflow-hidden ${sub.review?.status === 'Graded' ? 'border-green-100 bg-white' : 'bg-white border-indigo-100 shadow-xl'}`}>
             
-            {/* Status Decoration */}
             {sub.review?.status === 'Graded' ? (
                 <div className="absolute -top-1 -right-1 bg-green-500 text-white px-8 py-2 rounded-bl-[2rem] font-bold text-xs shadow-md">ตรวจแล้ว ✅</div>
             ) : (
-                <div className="absolute -top-1 -right-1 bg-orange-400 text-white px-8 py-2 rounded-bl-[2rem] font-bold text-xs shadow-md animate-pulse">รอตรวจ ⏳</div>
+                <div className="absolute -top-1 -right-1 bg-orange-400 text-white px-8 py-2 rounded-bl-[2rem] font-bold text-xs shadow-md animate-pulse">รอดำเนินการ ⏳</div>
             )}
 
             <div className="flex flex-col md:flex-row justify-between items-center gap-6">
@@ -357,13 +352,13 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
                 <div>
                   <h3 className="text-2xl font-bold text-slate-700 flex items-center gap-3">
                     {sub.name}
-                    {sub.review?.comment?.includes('🤖') && <span className="text-xl" title="AI ช่วยตรวจ">🤖</span>}
+                    {sub.review?.comment?.includes('🤖') && <span className="text-xl" title="ใช้ AI ช่วยตรวจงาน">🤖</span>}
                   </h3>
                   <div className="flex flex-wrap items-center gap-3 mt-1">
                     <span className="bg-indigo-50 text-indigo-500 px-4 py-1 rounded-full text-xs font-black">เลขที่ {sub.studentNumber}</span>
                     <span className="bg-slate-50 text-slate-400 px-4 py-1 rounded-full text-xs font-bold">{sub.grade === 'Prathom 5' ? 'ป.5' : 'ป.6'} | {sub.room.replace('Room ','ห้อง ')}</span>
                     <span className={`px-4 py-1 rounded-full text-xs font-bold ${sub.activityType === 'Sports Day' ? 'bg-orange-50 text-orange-400' : 'bg-cyan-50 text-cyan-400'}`}>
-                        {sub.activityType === 'Sports Day' ? 'กิจกรรมกีฬาสี' : 'กิจกรรมวันเด็ก'}
+                        {sub.activityType === 'Sports Day' ? 'กีฬาสี' : 'วันเด็ก'}
                     </span>
                   </div>
                 </div>
@@ -383,7 +378,7 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
                   <span className="group-hover:scale-110 transition-transform">📺</span> <span>ดูวิดีโอ</span>
                 </a>
                 <button onClick={() => startGrading(sub)} className="bg-orange-400 text-white px-8 py-3 rounded-2xl font-bold shadow-lg hover:bg-orange-500 transition-all flex items-center gap-2 group">
-                  <span className="group-hover:rotate-12 transition-transform">✍️</span> <span>{sub.review?.status === 'Graded' ? 'แก้ไขคะแนน' : 'เริ่มตรวจงาน'}</span>
+                  <span className="group-hover:rotate-12 transition-transform">✍️</span> <span>{sub.review?.status === 'Graded' ? 'ปรับคะแนน' : 'เริ่มตรวจ'}</span>
                 </button>
               </div>
             </div>
@@ -392,14 +387,14 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
               <div className="mt-8 p-8 bg-indigo-50 rounded-[2.5rem] border-4 border-indigo-100 animate-in slide-in-from-top duration-500 shadow-inner">
                 <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
                    <h4 className="text-xl font-kids text-indigo-700 flex items-center gap-2">
-                     <span className="text-2xl">🎨</span> แบบประเมินผลงาน
+                     <span className="text-2xl">📑</span> แบบให้คะแนน
                    </h4>
                    <button 
                     onClick={handleAutoGrade} 
                     disabled={isAutoGrading} 
                     className="bg-yellow-400 text-indigo-900 px-6 py-3 rounded-2xl font-black text-sm shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-50"
                   >
-                    <span>{isAutoGrading ? '🪄 AI กำลังวิเคราะห์...' : '🪄 ให้ AI ช่วยประเมินเบื้องต้น'}</span>
+                    <span>{isAutoGrading ? '🪄 กำลังใช้ AI...' : '🪄 ให้ AI ประเมินเบื้องต้น'}</span>
                   </button>
                 </div>
                 
@@ -413,12 +408,12 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
                 </div>
                 
                 <div className="mt-6 space-y-2">
-                  <label className="block text-xs font-black text-indigo-300 ml-4 uppercase tracking-tighter">คำชมและคำแนะนำจากคุณครู</label>
+                  <label className="block text-xs font-black text-indigo-300 ml-4 uppercase tracking-tighter">คำชมและข้อแนะนำจากคุณครู</label>
                   <textarea 
                     value={rubric.comment} 
                     onChange={(e) => updateRubricItem('comment', e.target.value)} 
                     className="w-full p-6 rounded-[2rem] h-32 border-4 border-indigo-100 outline-none focus:border-indigo-300 shadow-inner bg-white text-gray-700 font-medium text-sm" 
-                    placeholder="เขียนสิ่งที่คุณครูอยากบอกกับนักเรียนคนนี้..."
+                    placeholder="เขียนสิ่งที่คุณครูอยากบอก..."
                   />
                 </div>
 
@@ -428,13 +423,13 @@ const TeacherView: React.FC<TeacherViewProps> = ({ submissions, onUpdate, handle
                     disabled={saving} 
                     className="flex-1 bg-indigo-500 text-white font-kids text-2xl py-5 rounded-[2rem] shadow-xl border-b-8 border-indigo-700 hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50"
                   >
-                    {saving ? 'กำลังส่งข้อมูล...' : 'บันทึกคะแนนเลย! 💾'}
+                    {saving ? 'กำลังบันทึก...' : 'บันทึกคะแนนเรียบร้อย! 💾'}
                   </button>
                   <button 
                     onClick={() => setEditingId(null)} 
                     className="bg-white text-gray-400 px-10 py-5 rounded-[2rem] border-4 border-gray-100 font-bold hover:bg-gray-50 transition-all"
                   >
-                    ย่อเก็บ
+                    พับเก็บ
                   </button>
                 </div>
               </div>
