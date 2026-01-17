@@ -99,7 +99,7 @@ const SubmissionForm = ({ onSubmit }: { onSubmit: (data: StudentSubmission) => v
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8 animate-in zoom-in duration-500">
-      {errorMessage && <div className="bg-red-50 border-2 border-red-200 text-red-600 p-4 rounded-2xl font-bold">⚠️ {errorMessage}</div>}
+      {errorMessage && <div className="bg-red-50 border-2 border-red-200 text-red-600 p-4 rounded-2xl font-bold font-kids">⚠️ {errorMessage}</div>}
       <div className="space-y-4">
         <label className="block text-xl font-bold text-slate-700 text-center mb-4 font-kids">หนูต้องการส่งงานกิจกรรมอะไรจ๊ะ? ✨</label>
         <div className="grid grid-cols-2 gap-4">
@@ -134,7 +134,6 @@ const TeacherView = ({ submissions, onUpdate, handleUpdateGrade, teacherName }: 
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, currentName: '' });
   const [filterActivity, setFilterActivity] = useState('All');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Graded'>('All');
-  const [rubric, setRubric] = useState<RubricReview>({ contentAccuracy: 0, participation: 0, presentation: 0, discipline: 0, totalScore: 0, percentage: 0, comment: '', status: 'Pending' });
 
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(s => {
@@ -155,8 +154,10 @@ const TeacherView = ({ submissions, onUpdate, handleUpdateGrade, teacherName }: 
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            contentAccuracy: { type: Type.INTEGER }, participation: { type: Type.INTEGER },
-            presentation: { type: Type.INTEGER }, discipline: { type: Type.INTEGER },
+            contentAccuracy: { type: Type.INTEGER }, 
+            participation: { type: Type.INTEGER },
+            presentation: { type: Type.INTEGER }, 
+            discipline: { type: Type.INTEGER },
             comment: { type: Type.STRING }
           },
           required: ["contentAccuracy", "participation", "presentation", "discipline", "comment"]
@@ -177,7 +178,15 @@ const TeacherView = ({ submissions, onUpdate, handleUpdateGrade, teacherName }: 
       try {
         const aiResult = await runAIScore(sub);
         const total = aiResult.contentAccuracy + aiResult.participation + aiResult.presentation + aiResult.discipline;
-        await handleUpdateGrade(sub.rowId!, { ...aiResult, totalScore: total, percentage: Math.round((total / 20) * 100), status: 'Graded', activityType: sub.activityType });
+        if (sub.rowId !== undefined) {
+          await handleUpdateGrade(sub.rowId, { 
+            ...aiResult, 
+            totalScore: total, 
+            percentage: Math.round((total / 20) * 100), 
+            status: 'Graded', 
+            activityType: sub.activityType 
+          });
+        }
       } catch (err) { console.error(err); }
     }
     setIsBulkGrading(false);
@@ -186,14 +195,14 @@ const TeacherView = ({ submissions, onUpdate, handleUpdateGrade, teacherName }: 
   };
 
   const exportCSV = () => {
-    const sorted = [...submissions].sort((a,b) => parseInt(a.studentNumber) - parseInt(b.studentNumber));
+    const sorted = [...submissions].sort((a,b) => parseInt(a.studentNumber || '0') - parseInt(b.studentNumber || '0'));
     const headers = ["เลขที่", "ชื่อ", "ชั้น", "ห้อง", "กิจกรรม", "รวม(20)", "ความเห็น"];
     const rows = sorted.map(s => [s.studentNumber, s.name, s.grade, s.room, s.activityType, s.review?.totalScore || 0, `"${(s.review?.comment || '').replace(/"/g, '""')}"`]);
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `คะแนน_${new Date().toLocaleDateString()}.csv`;
+    link.download = `คะแนนวิชาสุขศึกษา_${new Date().toLocaleDateString()}.csv`;
     link.click();
   };
 
@@ -201,7 +210,7 @@ const TeacherView = ({ submissions, onUpdate, handleUpdateGrade, teacherName }: 
     <div className="space-y-6">
       {isBulkGrading && <div className="fixed inset-0 z-[200] bg-indigo-900/60 backdrop-blur-sm flex items-center justify-center p-6"><div className="bg-white rounded-[3rem] p-10 text-center shadow-2xl animate-in zoom-in"><div className="text-7xl mb-4">🤖</div><h3 className="text-3xl font-kids text-indigo-600">AI กำลังตรวจงาน...</h3><p className="mb-4 font-kids">ของนักเรียน: {bulkProgress.currentName}</p><div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden"><div className="bg-indigo-500 h-full transition-all" style={{width:`${(bulkProgress.current/bulkProgress.total)*100}%`}}></div></div></div></div>}
       <div className="bg-white p-6 rounded-[2rem] shadow-xl flex flex-col md:flex-row justify-between items-center gap-4">
-        <div><h2 className="text-2xl font-kids text-indigo-600">คุณครู: {teacherName}</h2></div>
+        <div><h2 className="text-2xl font-kids text-indigo-600">สวัสดีคุณครู {teacherName}</h2></div>
         <div className="flex flex-wrap justify-center gap-2">
             <button onClick={exportCSV} className="bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold font-kids">ส่งออกคะแนน</button>
             <button onClick={handleBulk} className="bg-yellow-400 text-indigo-900 px-6 py-3 rounded-xl font-bold font-kids">AI ตรวจทั้งหมด ({filteredSubmissions.filter(s=>s.review?.status!=='Graded').length})</button>
@@ -209,11 +218,11 @@ const TeacherView = ({ submissions, onUpdate, handleUpdateGrade, teacherName }: 
       </div>
       <div className="grid gap-4">
         {filteredSubmissions.map(sub => (
-          <div key={sub.rowId} className="bg-white p-6 rounded-[2rem] border-4 border-indigo-50 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div key={sub.rowId} className="bg-white p-6 rounded-[2rem] border-4 border-indigo-50 flex flex-col md:flex-row justify-between items-center gap-4 transition-all hover:border-indigo-200">
             <div><p className="font-bold text-lg font-kids">{sub.name} (เลขที่ {sub.studentNumber})</p><p className="text-sm text-gray-400 font-kids">{sub.grade} {sub.room}</p></div>
             <div className="flex gap-2">
                 <a href={sub.fileUrl} target="_blank" className="bg-blue-100 text-blue-600 px-4 py-2 rounded-xl font-bold font-kids">ดูวิดีโอ</a>
-                <button onClick={() => setEditingId(sub.rowId!)} className="bg-orange-400 text-white px-4 py-2 rounded-xl font-bold font-kids">ตรวจงาน</button>
+                <button onClick={() => { if(sub.rowId !== undefined) setEditingId(sub.rowId); }} className="bg-orange-400 text-white px-4 py-2 rounded-xl font-bold font-kids">ตรวจงาน</button>
             </div>
           </div>
         ))}
@@ -240,7 +249,11 @@ const DashboardView = ({ submissions }: { submissions: StudentSubmission[] }) =>
         labels: rooms.map(r => r.replace('Room ', 'ห้อง ')),
         datasets: [{ label: 'คะแนนเฉลี่ย', data: roomAverages, backgroundColor: '#A5B4FC', borderRadius: 10 }]
       },
-      options: { responsive: true, scales: { y: { beginAtZero: true, max: 20 } } }
+      options: { 
+        responsive: true, 
+        maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true, max: 20 } } 
+      }
     });
     return () => chart.destroy();
   }, [submissions]);
@@ -248,12 +261,10 @@ const DashboardView = ({ submissions }: { submissions: StudentSubmission[] }) =>
   return (
     <div className="space-y-8">
         <h2 className="text-3xl font-kids text-indigo-600 text-center">ภาพรวมสถิติ 📊</h2>
-        <div className="bg-white p-8 rounded-[3rem] shadow-sm"><canvas ref={chartRef}></canvas></div>
+        <div className="bg-white p-8 rounded-[3rem] shadow-sm h-80"><canvas ref={chartRef}></canvas></div>
     </div>
   );
 };
-
-// --- 3. Main App Component ---
 
 const App = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.STUDENT);
@@ -274,40 +285,49 @@ const App = () => {
   const fetchSubmissions = useCallback(async (silent = false) => {
     if (!silent) setStatus(AppStatus.LOADING_DATA);
     const res = await fetchAPI('list');
-    if (res?.success) setSubmissions(res.data || []);
+    if (res && res.success) setSubmissions(res.data || []);
     setStatus(AppStatus.IDLE);
   }, []);
 
   useEffect(() => { fetchSubmissions(); }, [fetchSubmissions]);
 
   const handleSubmit = async (data: StudentSubmission) => {
+    if (!data.videoFile) return;
     setStatus(AppStatus.UPLOADING);
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const base64Data = e.target?.result?.toString().split(',')[1];
-      const res = await fetchAPI('upload', { ...data, fileData: base64Data, fileName: data.videoFile?.name, mimeType: data.videoFile?.type });
-      if (res?.success) {
-        setStatus(AppStatus.SUCCESS);
-        confetti({ particleCount: 150 });
-        fetchSubmissions(true);
-      } else {
-        alert("เกิดข้อผิดพลาดในการอัปโหลด");
-        setStatus(AppStatus.IDLE);
+      const result = e.target && e.target.result;
+      if (typeof result === 'string') {
+        const base64Data = result.split(',')[1];
+        const res = await fetchAPI('upload', { ...data, fileData: base64Data, fileName: data.videoFile && data.videoFile.name, mimeType: data.videoFile && data.videoFile.type });
+        if (res && res.success) {
+          setStatus(AppStatus.SUCCESS);
+          confetti({ particleCount: 150 });
+          fetchSubmissions(true);
+        } else {
+          alert("เกิดข้อผิดพลาดในการอัปโหลด");
+          setStatus(AppStatus.IDLE);
+        }
       }
     };
-    reader.readAsDataURL(data.videoFile!);
+    reader.readAsDataURL(data.videoFile);
   };
 
   const handleUpdateGrade = async (rowId: number, rubricData: any) => {
     const res = await fetchAPI('grade', { rowId, ...rubricData });
-    if (res?.success) { fetchSubmissions(true); return true; }
+    if (res && res.success) { fetchSubmissions(true); return true; }
     return false;
   };
 
   const handleLogin = async (user: string, pin: string) => {
     const res = await fetchAPI('login', { username: user, pin: pin });
-    if(res?.success) { setIsTeacher(true); setTeacherName(res.teacherName); setCurrentView(AppView.TEACHER); }
-    else alert(res?.message || "PIN ไม่ถูกต้อง");
+    if(res && res.success) { 
+      setIsTeacher(true); 
+      setTeacherName(res.teacherName); 
+      setCurrentView(AppView.TEACHER); 
+    } else {
+      alert(res && res.message || "PIN ไม่ถูกต้อง");
+    }
   };
 
   return (
@@ -317,19 +337,28 @@ const App = () => {
       </header>
       <div className="max-w-6xl mx-auto px-4 mt-8">
         <Navigation currentView={currentView} setView={setCurrentView} />
-        <main className="glass-morphism rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-12 min-h-[600px]">
-          {status === AppStatus.LOADING_DATA && <div className="text-center py-20 font-kids animate-pulse">กำลังโหลดข้อมูล...</div>}
+        <main className="glass-morphism rounded-[2.5rem] md:rounded-[3.5rem] p-6 md:p-12 min-h-[600px] transition-all">
+          {status === AppStatus.LOADING_DATA && <div className="text-center py-20 font-kids animate-pulse text-indigo-500 text-xl font-bold">กำลังโหลดข้อมูล...</div>}
           {status === AppStatus.UPLOADING && <div className="text-center py-20"><div className="animate-spin text-6xl mb-4">📦</div><p className="text-xl font-kids text-indigo-500">กำลังอัปโหลดงานจ้า...</p></div>}
-          {status === AppStatus.SUCCESS && <div className="text-center py-20"><div className="text-9xl mb-4">🥳</div><p className="text-4xl font-kids text-green-500">ส่งงานสำเร็จแล้วจ้า!</p><button onClick={() => setStatus(AppStatus.IDLE)} className="mt-10 bg-green-500 text-white px-10 py-4 rounded-full font-kids text-xl shadow-lg">ส่งเพิ่มอีกไหมจ๊ะ?</button></div>}
+          {status === AppStatus.SUCCESS && <div className="text-center py-20"><div className="text-9xl mb-4">🥳</div><p className="text-4xl font-kids text-green-500">ส่งงานสำเร็จแล้วจ้า!</p><button onClick={() => setStatus(AppStatus.IDLE)} className="mt-10 bg-green-500 text-white px-10 py-4 rounded-full font-kids text-xl shadow-lg hover:scale-105 active:scale-95 transition-all">ส่งเพิ่มอีกไหมจ๊ะ?</button></div>}
           
           {status === AppStatus.IDLE && (
             <>
               {currentView === AppView.STUDENT && <SubmissionForm onSubmit={handleSubmit} />}
               {currentView === AppView.TEACHER && isTeacher && <TeacherView submissions={submissions} teacherName={teacherName} onUpdate={() => fetchSubmissions(true)} handleUpdateGrade={handleUpdateGrade} />}
-              {currentView === AppView.TEACHER_LOGIN && !isTeacher && <div className="max-w-md mx-auto py-12 text-center"><h2 className="text-3xl font-kids mb-10">โต๊ะทำงานคุณครู</h2><input type="text" id="t-user" placeholder="ชื่อผู้ใช้" className="w-full p-4 mb-4 rounded-2xl border-2 font-kids" /><input type="password" id="t-pin" placeholder="รหัส PIN" className="w-full p-4 mb-8 rounded-2xl border-2 font-kids" /><button onClick={() => handleLogin((document.getElementById('t-user') as HTMLInputElement).value, (document.getElementById('t-pin') as HTMLInputElement).value)} className="w-full bg-indigo-500 text-white py-5 rounded-2xl font-kids text-xl shadow-xl">เข้าสู่ระบบ</button></div>}
+              {currentView === AppView.TEACHER_LOGIN && !isTeacher && <div className="max-w-md mx-auto py-12 text-center"><h2 className="text-3xl font-kids mb-10">โต๊ะทำงานคุณครู</h2><input type="text" id="t-user" placeholder="ชื่อผู้ใช้" className="w-full p-4 mb-4 rounded-2xl border-2 font-kids outline-none focus:border-indigo-400" /><input type="password" id="t-pin" placeholder="รหัส PIN" className="w-full p-4 mb-8 rounded-2xl border-2 font-kids outline-none focus:border-indigo-400" /><button onClick={() => {
+                const user = (document.getElementById('t-user') as HTMLInputElement).value;
+                const pin = (document.getElementById('t-pin') as HTMLInputElement).value;
+                handleLogin(user, pin);
+              }} className="w-full bg-indigo-500 text-white py-5 rounded-2xl font-kids text-xl shadow-xl hover:bg-indigo-600">เข้าสู่ระบบ</button></div>}
               {currentView === AppView.DASHBOARD && <DashboardView submissions={submissions} />}
-              {currentView === AppView.GALLERY && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">{submissions.map(s => <div key={s.rowId} className="bg-white p-6 rounded-3xl border-2 border-pink-50 shadow-sm"><div className="text-5xl mb-4 text-center">🎬</div><h3 className="font-bold font-kids text-center">{s.name}</h3><p className="text-xs text-center text-gray-400 font-kids mb-4">{s.grade} {s.room}</p><a href={s.fileUrl} target="_blank" className="block text-center bg-pink-500 text-white py-2 rounded-xl font-kids">ดูวิดีโอ</a></div>)}</div>}
-              {currentView === AppView.RESULT && <div className="max-w-md mx-auto text-center"><h2 className="text-3xl font-kids mb-10">ค้นหาคะแนน</h2><input type="number" id="s-no" placeholder="เลขที่ของหนู" className="w-full p-4 mb-4 rounded-2xl border-2 font-kids" /><button onClick={() => {const no = (document.getElementById('s-no') as HTMLInputElement).value; const found = submissions.find(s => s.studentNumber === no); if(found && found.review) alert(`คะแนนของหนูคือ: ${found.review.totalScore}/20\nคุณครูบอกว่า: ${found.review.comment}`); else alert("ไม่พบข้อมูล หรือคุณครูยังไม่ได้ตรวจจ้า");}} className="w-full bg-yellow-500 text-white py-5 rounded-2xl font-kids text-xl shadow-xl">ค้นหาเลย!</button></div>}
+              {currentView === AppView.GALLERY && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">{submissions.map(s => <div key={s.rowId} className="bg-white p-6 rounded-3xl border-2 border-pink-50 shadow-sm transition-all hover:scale-105"><div className="text-5xl mb-4 text-center">🎬</div><h3 className="font-bold font-kids text-center truncate">{s.name}</h3><p className="text-xs text-center text-gray-400 font-kids mb-4">{s.grade} {s.room}</p><a href={s.fileUrl} target="_blank" className="block text-center bg-pink-500 text-white py-2 rounded-xl font-kids shadow-sm">ดูวิดีโอ</a></div>)}</div>}
+              {currentView === AppView.RESULT && <div className="max-w-md mx-auto text-center"><h2 className="text-3xl font-kids mb-10">ค้นหาคะแนน</h2><input type="number" id="s-no" placeholder="เลขที่ของหนู" className="w-full p-4 mb-4 rounded-2xl border-2 font-kids outline-none focus:border-yellow-400" /><button onClick={() => {
+                const no = (document.getElementById('s-no') as HTMLInputElement).value;
+                const found = submissions.find(s => s.studentNumber === no);
+                if(found && found.review) alert(`คะแนนของหนูคือ: ${found.review.totalScore}/20\nคุณครูบอกว่า: ${found.review.comment}`);
+                else alert("ไม่พบข้อมูล หรือคุณครูยังไม่ได้ตรวจจ้า");
+              }} className="w-full bg-yellow-500 text-white py-5 rounded-2xl font-kids text-xl shadow-xl hover:bg-yellow-600">ค้นหาเลย!</button></div>}
             </>
           )}
         </main>
