@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.STUDENT);
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
   const [lastSubmissionName, setLastSubmissionName] = useState<string>('');
   const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
   const [isTeacher, setIsTeacher] = useState(false);
@@ -104,7 +105,7 @@ const App: React.FC = () => {
   const generateAIFeedback = async (studentName: string, rubric: RubricReview) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `คุณเป็นคุณครูระดับประถมที่ใจดีมาก กำลังเขียนคำชมและคำแนะนำให้นักเรียนชื่อ "${studentName}" 
-    ที่ได้คะแนนรวม ${rubric.totalScore}/20 จากการร่วมกิจกรรมกีฬาสี 
+    ที่ได้คะแนนรวม ${rubric.totalScore}/20 จากการร่วมกิจกรรมในวิชาสุขศึกษาและพลศึกษา 
     เขียนสั้นๆ 2-3 ประโยคให้นักเรียนรู้สึกมีกำลังใจและภูมิใจในตัวเองเป็นภาษาไทย`;
 
     try {
@@ -115,6 +116,21 @@ const App: React.FC = () => {
       return response.text || "ทำได้ดีมากจ๊ะ!";
     } catch (e) {
       return "ผลงานหนูยอดเยี่ยมมากจ๊ะ ตั้งใจพัฒนาต่อไปนะ!";
+    }
+  };
+
+  const handleTeacherLogin = async (user: string, pin: string) => {
+    setLoginError('');
+    setStatus(AppStatus.LOADING_DATA);
+    const res = await fetchAPI('login', { username: user, pin: pin });
+    setStatus(AppStatus.IDLE);
+    
+    if(res && res.success) {
+      setIsTeacher(true);
+      setTeacherName(res.teacherName);
+      setCurrentView(AppView.TEACHER);
+    } else {
+      setLoginError(res?.message || "ชื่อผู้ใช้หรือรหัส PIN ไม่ถูกต้องจ้า 🔐");
     }
   };
 
@@ -135,16 +151,16 @@ const App: React.FC = () => {
               />
             </div>
             <h1 className="text-base md:text-lg font-kids font-bold text-slate-700 flex items-center gap-2">
-              Sports Day <span className="rainbow-text">2025</span>
+              วิชา <span className="rainbow-text">สุขศึกษาและพลศึกษา</span>
             </h1>
           </div>
           
           <div className="flex items-center gap-3">
              <div className="hidden sm:flex items-center gap-2 bg-white/60 px-3 py-1 rounded-full border border-white/80 text-[10px] font-bold text-slate-500 uppercase">
-               🏃 กิจกรรมกีฬาสีโรงเรียน
+               🏃 Health and Physical Education
              </div>
              <div className="flex gap-2">
-               <span className="animate-bounce text-xl">🏆</span>
+               <span className="animate-bounce text-xl">⛹️</span>
              </div>
           </div>
         </div>
@@ -153,7 +169,7 @@ const App: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 mt-8">
         <div className="text-center mb-8 animate-in fade-in slide-in-from-top duration-700">
            <h2 className="text-3xl md:text-4xl font-kids text-slate-700 mb-1 drop-shadow-sm">ยินดีต้อนรับนะจ๊ะเด็กๆ! 🌈</h2>
-           <p className="text-slate-500 font-bold text-sm bg-white/30 inline-block px-4 py-1 rounded-full backdrop-blur-sm">บันทึกความทรงจำสุดแสนประทับใจไปด้วยกัน</p>
+           <p className="text-slate-500 font-bold text-sm bg-white/30 inline-block px-4 py-1 rounded-full backdrop-blur-sm">ระบบส่งงานวิชาสุขศึกษาและพลศึกษา</p>
         </div>
 
         <Navigation currentView={currentView} setView={setCurrentView} />
@@ -173,7 +189,7 @@ const App: React.FC = () => {
                     onClick={() => setStatus(AppStatus.IDLE)} 
                     className="bg-indigo-500 text-white px-12 py-5 rounded-full font-bold shadow-2xl hover:bg-indigo-600 transition-all transform hover:scale-110 active:scale-95 text-xl"
                   >
-                    ลองใหม่อีกครั้งนะจ๊ะเด็กๆ 🔄
+                    ลองใหมีกครั้งนะจ๊ะเด็กๆ 🔄
                   </button>
                 </div>
               )}
@@ -183,18 +199,10 @@ const App: React.FC = () => {
           {currentView === AppView.RESULT && <ResultChecker submissions={submissions} refreshData={() => fetchSubmissions(true)} />}
           {currentView === AppView.GALLERY && <VideoGallery submissions={submissions} />}
           {currentView === AppView.TEACHER_LOGIN && (
-            <TeacherLogin onLogin={async (user, pin) => {
-              setStatus(AppStatus.LOADING_DATA);
-              const res = await fetchAPI('login', { username: user, pin: pin });
-              setStatus(AppStatus.IDLE);
-              if(res && res.success) {
-                setIsTeacher(true);
-                setTeacherName(res.teacherName);
-                setCurrentView(AppView.TEACHER);
-              } else {
-                alert("รหัสผ่านไม่ถูกต้องจ้า 🔐");
-              }
-            }} />
+            <TeacherLogin 
+              onLogin={handleTeacherLogin} 
+              loginError={loginError}
+            />
           )}
           {currentView === AppView.TEACHER && isTeacher && (
             <TeacherView 
@@ -212,7 +220,7 @@ const App: React.FC = () => {
         <footer className="mt-16 text-center">
           <div className="inline-flex flex-col items-center gap-3 bg-white/40 backdrop-blur-md px-10 py-5 rounded-[2rem] border-2 border-white shadow-sm">
             <p className="text-slate-500 font-bold text-sm md:text-base">
-              © 2025 Sports Day System | Krukaihuo
+              © 2025 สุขศึกษาและพลศึกษา | Krukaihuo
             </p>
           </div>
         </footer>
