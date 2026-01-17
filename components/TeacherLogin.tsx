@@ -3,16 +3,14 @@ import React, { useState } from 'react';
 
 interface TeacherLoginProps {
   onLogin: (username: string, pin: string) => void;
-  loginError?: string;
 }
 
-const TeacherLogin: React.FC<TeacherLoginProps> = ({ onLogin, loginError }) => {
+const TeacherLogin: React.FC<TeacherLoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [pin, setPin] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !pin) return;
     onLogin(username, pin);
   };
 
@@ -22,12 +20,6 @@ const TeacherLogin: React.FC<TeacherLoginProps> = ({ onLogin, loginError }) => {
       <h2 className="text-4xl font-kids text-indigo-600 mb-4">โต๊ะทำงานคุณครู</h2>
       <p className="text-gray-500 mb-10 text-lg font-semibold italic">"กรุณาระบุชื่อผู้ใช้และรหัสลับ!"</p>
       
-      {loginError && (
-        <div className="mb-6 bg-red-50 border-2 border-red-200 text-red-600 p-4 rounded-2xl font-bold animate-in shake-x duration-300">
-          ❌ {loginError}
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="space-y-6">
         <input 
           type="text" 
